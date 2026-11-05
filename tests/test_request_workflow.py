@@ -1,6 +1,6 @@
 """Runs the two scripts of .github/workflows/short-link-request.yml the way the workflow does:
 scripts/run_request.sh on a fresh checkout of main, then scripts/comment_failure.sh when it fails.
-git pushes to a local bare origin; gh is a stub that records calls."""
+git pushes to a local bare origin; gh is tests/gh_stub.py, which records calls."""
 import json
 import os
 import shutil
@@ -14,22 +14,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Full path: on Windows a bare "bash" resolves to WSL before Git Bash.
 BASH = shutil.which("bash")
 RUN_URL = "https://github.com/osim-yoter-org/oy-public/actions/runs/42"
-GH_STUB = r"""#!/usr/bin/env bash
-d="$GH_STUB_DIR"
-printf '%s\n' "$*" >> "$d/calls.log"
-case "$1 $2" in
-  "pr list") cat "$d/pr_list.json" 2>/dev/null || echo "[]" ;;
-  "pr create")
-    [ -f "$d/fail_pr_create" ] && exit 1
-    while [ $# -gt 0 ]; do case "$1" in --head) head="$2"; shift ;; --title) title="$2"; shift ;; esac; shift; done
-    printf '[{"number": 9, "headRefName": "%s", "title": "%s", "url": "https://github.com/o/r/pull/9"}]\n' "$head" "$title" > "$d/pr_list.json"
-    echo "https://github.com/o/r/pull/9" ;;
-  "pr edit") ;;
-  "issue comment")
-    while [ $# -gt 0 ]; do case "$1" in --body) printf '%s\n' "$2" >> "$d/comments.log"; shift ;; --body-file) cat "$2" >> "$d/comments.log"; shift ;; esac; shift; done ;;
-  *) exit 2 ;;
-esac
-"""
+REPO = "osim-yoter-org/oy-public"
+PULL = f"https://github.com/{REPO}/pull"
+WORKFLOW = REPO_ROOT / ".github" / "workflows" / "short-link-request.yml"
+
+
+def pull(number, branch, title, repo=REPO):
+    return {"number": number, "title": title, "html_url": f"https://github.com/{repo}/pull/{number}",
+            "head": {"ref": branch, "label": f"{repo.split('/')[0]}:{branch}", "repo": {"full_name": repo}}}
 
 
 def issue_body(slug, url, label="קישור"):
@@ -48,7 +40,9 @@ class RequestWorkflowTests(unittest.TestCase):
         bin_dir = self.root / "bin"
         for folder in (self.stub, self.temp, bin_dir):
             folder.mkdir()
-        (bin_dir / "gh").write_text(GH_STUB, encoding="utf-8", newline="\n")
+        python = Path(sys.executable).as_posix()
+        stub_script = (REPO_ROOT / "tests" / "gh_stub.py").as_posix()
+        (bin_dir / "gh").write_text(f'#!/usr/bin/env bash\nexec "{python}" "{stub_script}" "$@"\n', encoding="utf-8", newline="\n")
         (bin_dir / "python3").write_text(f'#!/usr/bin/env bash\nexec "{Path(sys.executable).as_posix()}" "$@"\n', encoding="utf-8", newline="\n")
         for stub in bin_dir.iterdir():
             stub.chmod(0o755)
@@ -99,6 +93,9 @@ class RequestWorkflowTests(unittest.TestCase):
     def remote_branches(self):
         return self.git("--git-dir", str(self.origin), "branch", "--format=%(refname:short)").split()
 
+    def seed_pulls(self, pulls):
+        (self.stub / "pulls.json").write_text(json.dumps(pulls), encoding="utf-8")
+
     def calls(self):
         path = self.stub / "calls.log"
         return path.read_text(encoding="utf-8") if path.exists() else ""
@@ -112,7 +109,7 @@ class RequestWorkflowTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.remote_links("short-link/issue-7")["new-link"]["url"], "https://example.com/a")
         self.assertIn("pr create --base main --head short-link/issue-7 --title Add short link /new-link", self.calls())
-        self.assertIn("https://github.com/o/r/pull/9", self.comments())
+        self.assertIn(f"{PULL}/1", self.comments())
 
     def test_when_label_holds_shell_syntax_it_reaches_the_branch_as_text(self):
         label = "יום \"מילואים\" 'שלי' $(touch pwned) `touch pwned2` ${HOME}"
@@ -129,7 +126,7 @@ class RequestWorkflowTests(unittest.TestCase):
         self.assertNotIn("new-link", links)
         self.assertEqual(links["renamed-link"]["url"], "https://example.com/b")
         self.assertEqual(self.calls().count("pr create"), 1)
-        self.assertIn("pr edit https://github.com/o/r/pull/9 --title Add short link /renamed-link", self.calls())
+        self.assertIn(f"pr edit {PULL}/1 --title Add short link /renamed-link", self.calls())
 
     def test_when_branch_exists_without_pr_the_next_run_opens_the_pr(self):
         (self.stub / "fail_pr_create").touch()
@@ -142,7 +139,7 @@ class RequestWorkflowTests(unittest.TestCase):
         recovered = self.process_issue(7, issue_body("new-link", "https://example.com/a"))
         self.assertEqual(recovered.returncode, 0, recovered.stdout + recovered.stderr)
         self.assertEqual(self.calls().count("pr create"), 2)
-        self.assertIn("https://github.com/o/r/pull/9", self.comments())
+        self.assertIn(f"{PULL}/1", self.comments())
 
     def test_when_push_is_rejected_comments_the_reason_and_run_link(self):
         hook = self.origin / "hooks" / "pre-receive"
@@ -155,12 +152,10 @@ class RequestWorkflowTests(unittest.TestCase):
         self.assertNotIn("pr create", self.calls())
 
     def test_when_another_open_pr_requests_the_same_slug_refuses(self):
-        other = [{"number": 3, "headRefName": "short-link/issue-3", "title": "Add short link /new-link",
-                  "url": "https://github.com/o/r/pull/3"}]
-        (self.stub / "pr_list.json").write_text(json.dumps(other), encoding="utf-8")
+        self.seed_pulls([pull(3, "short-link/issue-3", "Add short link /new-link")])
         result = self.process_issue(7, issue_body("new-link", "https://example.com/a"))
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("/new-link is already requested in https://github.com/o/r/pull/3", self.comments())
+        self.assertIn(f"/new-link is already requested in {PULL}/3", self.comments())
         self.assertNotIn("short-link/issue-7", self.remote_branches())
 
     def test_when_request_breaks_a_rule_comments_problems_and_run_link(self):
@@ -169,6 +164,50 @@ class RequestWorkflowTests(unittest.TestCase):
         self.assertIn("url must be a full https:// address", self.comments())
         self.assertIn(RUN_URL, self.comments())
         self.assertNotIn("short-link/issue-7", self.remote_branches())
+
+    def test_when_a_fork_pr_uses_the_issue_branch_name_it_is_not_adopted(self):
+        self.seed_pulls([pull(5, "short-link/issue-7", "Add short link /new-link", repo="attacker/oy-public")])
+        result = self.process_issue(7, issue_body("new-link", "https://example.com/a"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("pull/5", self.calls())
+        self.assertNotIn("pull/5", self.comments())
+        self.assertIn("pr create --base main --head short-link/issue-7", self.calls())
+        self.assertIn(f"{PULL}/6", self.comments())
+
+    def test_when_a_fork_pr_has_the_same_title_it_does_not_block_the_request(self):
+        self.seed_pulls([pull(5, "short-link/issue-3", "Add short link /new-link", repo="attacker/oy-public")])
+        result = self.process_issue(7, issue_body("new-link", "https://example.com/a"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f"{PULL}/6", self.comments())
+
+    def test_when_over_200_prs_are_open_an_edit_still_finds_its_own_pr(self):
+        self.seed_pulls([pull(n, f"other/branch-{n}", f"Other PR {n}") for n in range(1, 201)])
+        self.process_issue(7, issue_body("new-link", "https://example.com/a"))
+        result = self.process_issue(7, issue_body("new-link", "https://example.com/b"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.calls().count("pr create"), 1)
+        self.assertIn(f"pr edit {PULL}/201", self.calls())
+        self.assertEqual(self.remote_links("short-link/issue-7")["new-link"]["url"], "https://example.com/b")
+
+    def test_when_over_200_prs_are_open_a_duplicate_slug_is_still_found(self):
+        pulls = [pull(n, f"other/branch-{n}", f"Other PR {n}") for n in range(1, 201)]
+        self.seed_pulls(pulls + [pull(201, "short-link/issue-3", "Add short link /new-link")])
+        result = self.process_issue(7, issue_body("new-link", "https://example.com/a"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(f"/new-link is already requested in {PULL}/201", self.comments())
+
+    def test_when_two_issues_ask_for_one_slug_the_later_run_is_refused(self):
+        first = self.process_issue(7, issue_body("new-link", "https://example.com/a"))
+        second = self.process_issue(8, issue_body("new-link", "https://example.com/b"))
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertNotEqual(second.returncode, 0)
+        self.assertIn(f"/new-link is already requested in {PULL}/1", self.comments())
+        self.assertNotIn("short-link/issue-8", self.remote_branches())
+
+    def test_requests_run_one_at_a_time_across_all_issues(self):
+        """Runs that overlap would both miss each other's PR; one shared group makes the later run see it."""
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("concurrency:\n  group: short-link-request\n  cancel-in-progress: false\n  queue: max\n", text)
 
 
 if __name__ == "__main__":

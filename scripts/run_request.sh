@@ -19,13 +19,22 @@ branch="short-link/issue-$ISSUE_NUMBER"
 title="Add short link /$slug"
 run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
-open_prs=$(gh pr list --base main --state open --limit 200 --json headRefName,title,url) \
-  || fail "could not list the open pull requests"
-pr_refs=$(OPEN_PRS="$open_prs" BRANCH="$branch" TITLE="$title" python3 -c '
+# Only PRs whose head branch lives in this repository count: a fork PR can reuse any branch name or title.
+# Both lookups page through every open PR (100 per page), so nothing is cut off.
+pulls_api="repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100"
+own_pulls="$RUNNER_TEMP/own-pulls.json"
+open_pulls="$RUNNER_TEMP/open-pulls.json"
+gh api --paginate --slurp "$pulls_api&head=${GITHUB_REPOSITORY%%/*}:$branch" > "$own_pulls" \
+  || fail "could not look up the pull request of $branch"
+gh api --paginate --slurp "$pulls_api" > "$open_pulls" || fail "could not list the open pull requests"
+pr_refs=$(OWN_PULLS="$own_pulls" OPEN_PULLS="$open_pulls" BRANCH="$branch" TITLE="$title" python3 -c '
 import json, os
-prs = json.loads(os.environ["OPEN_PRS"] or "[]")
-own = next((p["url"] for p in prs if p["headRefName"] == os.environ["BRANCH"]), "-")
-other = next((p["url"] for p in prs if p["title"] == os.environ["TITLE"] and p["headRefName"] != os.environ["BRANCH"]), "-")
+repo, branch, title = os.environ["GITHUB_REPOSITORY"], os.environ["BRANCH"], os.environ["TITLE"]
+def same_repo_pulls(path):
+    with open(path, encoding="utf-8") as pages:
+        return [p for page in json.load(pages) for p in page if (p["head"]["repo"] or {}).get("full_name") == repo]
+own = next((p["html_url"] for p in same_repo_pulls(os.environ["OWN_PULLS"]) if p["head"]["ref"] == branch), "-")
+other = next((p["html_url"] for p in same_repo_pulls(os.environ["OPEN_PULLS"]) if p["title"] == title and p["head"]["ref"] != branch), "-")
 print(own, other)') || fail "could not read the open pull requests"
 read -r own_pr other_pr <<< "$pr_refs"
 if [ "$other_pr" != "-" ]; then

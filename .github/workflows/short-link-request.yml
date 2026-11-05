@@ -12,8 +12,13 @@ permissions:
   pull-requests: write
   issues: write
 
+# One request at a time across all issues, so a run always sees the PRs earlier runs opened
+# (two issues asking for the same slug cannot both pass). queue: max keeps up to 100 runs waiting
+# in order instead of the default of one, which cancels a waiting run when another arrives.
 concurrency:
-  group: short-link-request-${{ github.event.issue.number }}
+  group: short-link-request
+  cancel-in-progress: false
+  queue: max
 
 jobs:
   request:
