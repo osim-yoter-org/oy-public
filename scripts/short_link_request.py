@@ -11,13 +11,15 @@ import json
 import os
 import re
 import sys
+from decimal import Decimal
 from pathlib import Path
 
-from validate_links import check_links, load_json
+from validate_links import NOT_PARSED, check_links, load_json
 
 # The text in parentheses at the end of each issue form label (.github/ISSUE_TEMPLATE/new-short-link.yml).
 FIELD_HEADING = re.compile(r"^###\s+.*\((slug|url|label|delay)\)\s*$")
 DELAY_SECONDS = re.compile(r"^\d+(\.\d+)?$")
+MAX_DELAY_SECONDS = Decimal(10)
 NO_RESPONSE = "_No response_"
 
 
@@ -51,10 +53,13 @@ def build_entry(fields):
         problems.append("label: must be a single line")
     delay_ms = 0
     if delay:
-        if DELAY_SECONDS.match(delay):
-            delay_ms = round(float(delay) * 1000)
-        else:
+        seconds = Decimal(delay) if DELAY_SECONDS.match(delay) else None
+        if seconds is None or seconds > MAX_DELAY_SECONDS:
             problems.append("delay: must be a number of seconds from 0 to 10")
+        elif len(delay.partition(".")[2]) > 3:
+            problems.append("delay: at most 3 digits after the decimal point")
+        else:
+            delay_ms = int(seconds.scaleb(3))
     return slug, {"url": url, "label": label, "delayMs": delay_ms}, problems
 
 
@@ -63,12 +68,14 @@ def main(argv):
     slug, entry, problems = build_entry(parse_issue_body(os.environ.get("ISSUE_BODY", "")))
     links, load_problems = load_json(links_path)
     problems += load_problems
-    if isinstance(links, dict):
+    if links is NOT_PARSED:
+        pass
+    elif isinstance(links, dict):
         if slug in links:
             problems.append(f"{slug!r}: this slug already exists in links.json")
         updated = {**links, slug: entry}
         problems += check_links(updated)
-    elif links is not None:
+    else:
         problems.append("links.json: top level must be an object of slug -> entry")
     if problems:
         for problem in problems:

@@ -9,11 +9,13 @@ Prints one line per problem and exits 1, or prints one OK line and exits 0.
 """
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+HTTPS_URLS_SCRIPT = Path(__file__).resolve().parent / "https_urls.mjs"
+NOT_PARSED = object()
 SLUG_PATTERN = re.compile(r"^[a-z0-9-]+$")
 MAX_DELAY_MS = 10000
 MAX_LABEL_LENGTH = 80
@@ -35,7 +37,7 @@ RESERVED_SLUGS = set(APP_PAGE_SLUGS + FORWARD_ROUTE_SLUGS + ARCHIVE_SLUGS + REDI
 
 
 def load_json(path):
-    """Parse a JSON file strictly. Returns (value, problems); value is None when the file does not parse."""
+    """Parse a JSON file strictly. Returns (value, problems); value is NOT_PARSED when the file does not parse."""
     problems = []
 
     def reject_duplicates(pairs):
@@ -53,18 +55,22 @@ def load_json(path):
         text = path.read_text(encoding="utf-8")
         value = json.loads(text, object_pairs_hook=reject_duplicates, parse_constant=reject_constant)
     except (OSError, UnicodeDecodeError, ValueError) as error:
-        return None, [f"{path.name}: does not parse: {error}"]
+        return NOT_PARSED, [f"{path.name}: does not parse: {error}"]
     return value, problems
 
 
-def is_https_url(value):
-    if not isinstance(value, str) or not value.startswith("https://"):
-        return False
+def https_url_flags(values):
+    """True per value the site accepts as a url. Runs the site's own check on Node's WHATWG URL parser.
+    Returns None when Node is missing or fails, so the caller can fail closed."""
     try:
-        parts = urlsplit(value)
-    except ValueError:
-        return False
-    return parts.scheme == "https" and bool(parts.hostname)
+        result = subprocess.run(
+            ["node", str(HTTPS_URLS_SCRIPT)], input=json.dumps(values), capture_output=True,
+            text=True, encoding="utf-8", timeout=60, check=True,
+        )
+        flags = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    return flags if isinstance(flags, list) and len(flags) == len(values) else None
 
 
 def check_links(links, name="links.json"):
@@ -72,6 +78,12 @@ def check_links(links, name="links.json"):
     if not isinstance(links, dict):
         return [f"{name}: top level must be an object of slug -> entry"]
     problems = []
+    urls = [entry.get("url") for entry in links.values() if isinstance(entry, dict)]
+    url_flags = https_url_flags(urls)
+    if url_flags is None:
+        problems.append(f"{name}: url check needs Node (node was not found or failed)")
+        url_flags = [True] * len(urls)
+    url_flags = iter(url_flags)
     for slug, entry in links.items():
         where = f"{name}: {slug!r}"
         if not SLUG_PATTERN.match(slug):
@@ -81,7 +93,7 @@ def check_links(links, name="links.json"):
         if not isinstance(entry, dict):
             problems.append(f"{where}: entry must be an object with url, label, delayMs")
             continue
-        if not is_https_url(entry.get("url")):
+        if not next(url_flags):
             problems.append(f"{where}: url must be a full https:// address")
         if "label" in entry:
             label = entry["label"]
@@ -98,7 +110,7 @@ def check_links(links, name="links.json"):
 
 def check_links_file(path):
     links, problems = load_json(path)
-    if links is None:
+    if links is NOT_PARSED:
         return problems
     return problems + check_links(links, path.name)
 
