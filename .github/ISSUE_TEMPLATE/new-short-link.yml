@@ -1,0 +1,42 @@
+name: בקשה לקישור קצר חדש
+description: קישור קצר חדש באתר osimyoter.co.il (למשל osimyoter.co.il/my-link)
+title: "קישור קצר חדש: "
+labels: ["short-link"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        אחרי השליחה נבדקת הבקשה אוטומטית ונפתח Pull Request. הקישור עולה לאוויר כ-5 דקות אחרי אישור.
+        אם הבדיקה נכשלת, רשימת הבעיות מופיעה כאן כתגובה. לתיקון: לערוך את הבקשה (Edit) והבדיקה רצה שוב.
+  - type: input
+    id: slug
+    attributes:
+      label: שם הקישור (slug)
+      description: "אותיות לועזיות קטנות a-z, ספרות 0-9 ומקף - בלבד. בלי רווחים, בלי עברית, בלי /. לא שם של עמוד קיים באתר (u, wa, ads, search, pp וכו'). דוגמה: reserve-day-2026 נותן את osimyoter.co.il/reserve-day-2026"
+      placeholder: reserve-day-2026
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: כתובת יעד (url)
+      description: הכתובת המלאה שאליה הקישור מעביר. חייבת להתחיל ב-https://
+      placeholder: https://docs.google.com/forms/d/e/example/viewform
+    validations:
+      required: true
+  - type: input
+    id: label
+    attributes:
+      label: טקסט בזמן ההעברה (label)
+      description: מה שמוצג על המסך בזמן ההעברה. עברית מותרת, עד 80 תווים.
+      placeholder: מעבר לטופס ההרשמה
+    validations:
+      required: true
+  - type: input
+    id: delay
+    attributes:
+      label: השהיה בשניות (delay)
+      description: "רשות. 0 עד 10. 0 או ריק = העברה מיידית; 3 = הטקסט מוצג 3 שניות ואז העברה."
+      placeholder: "0"
+    validations:
+      required: false

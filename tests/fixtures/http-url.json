@@ -1,0 +1,3 @@
+{
+  "plain-http": {"url": "http://example.com/", "label": "not https", "delayMs": 0}
+}

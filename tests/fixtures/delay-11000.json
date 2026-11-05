@@ -1,0 +1,3 @@
+{
+  "too-slow": {"url": "https://example.com/", "label": "too slow", "delayMs": 11000}
+}

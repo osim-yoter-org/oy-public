@@ -1,0 +1,43 @@
+name: Short link request
+
+# Issue text reaches the scripts only through env variables, never through ${{ }} inside run: lines.
+# PRs this workflow opens run validate.yml only after someone with write access selects
+# "Approve workflows to run"; run_request.sh runs the same validator before it pushes.
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+# One request at a time across all issues, so a run always sees the PRs earlier runs opened
+# (two issues asking for the same slug cannot both pass). queue: max keeps up to 100 runs waiting
+# in order instead of the default of one, which cancels a waiting run when another arrives.
+concurrency:
+  group: short-link-request
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  request:
+    if: github.event.issue.state == 'open' && contains(github.event.issue.labels.*.name, 'short-link')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Validate the request and open or update its pull request
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: bash scripts/run_request.sh
+
+      - name: Comment the failure on the issue
+        if: failure()
+        run: bash scripts/comment_failure.sh
