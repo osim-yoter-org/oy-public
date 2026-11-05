@@ -60,11 +60,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
+          # PRs opened with the workflow token do not trigger validate.yml, so this run is the gate for them.
+          if ! validation=$(python3 scripts/validate_links.py); then
+            echo "$validation"
+            exit 1
+          fi
           git add links.json
           git commit -m "Add short link /$SLUG" -m "Closes #$ISSUE_NUMBER"
           git push origin "$branch"
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          printf 'Closes #%s\n\nAdds /%s to links.json. The validator passed in %s\n\nPull requests opened by this workflow do not start the Validate check on their own. Close and reopen this PR to run it before merging.\n' \
-            "$ISSUE_NUMBER" "$SLUG" "$run_url" > "$RUNNER_TEMP/pr-body.md"
+          printf 'Closes #%s\n\nAdds /%s to links.json.\n\nValidation (scripts/validate_links.py on this branch, run %s):\n\n```text\n%s\n```\n\nPull requests opened by this workflow do not start the Validate check on their own; the result above is the gate.\n' \
+            "$ISSUE_NUMBER" "$SLUG" "$run_url" "$validation" > "$RUNNER_TEMP/pr-body.md"
           pr_url=$(gh pr create --base main --head "$branch" --title "Add short link /$SLUG" --body-file "$RUNNER_TEMP/pr-body.md")
           gh issue comment "$ISSUE_NUMBER" --body "נפתח Pull Request: $pr_url - הקישור עולה לאוויר כ-5 דקות אחרי האישור."
