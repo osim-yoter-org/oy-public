@@ -1,0 +1,11 @@
+{
+  "reserve-day-2026": {
+    "url": "https://docs.google.com/forms/d/e/example/viewform",
+    "label": "מעבר לטופס ההרשמה",
+    "delayMs": 3000
+  },
+  "no-delay": {
+    "url": "https://osimyoter.co.il/ads",
+    "label": "פרסום בקהילה"
+  }
+}

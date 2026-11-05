@@ -1,0 +1,70 @@
+name: Short link request
+
+# Issue text reaches the scripts only through env variables, never through ${{ }} inside run: lines.
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: short-link-request-${{ github.event.issue.number }}
+
+jobs:
+  request:
+    if: github.event.issue.state == 'open' && contains(github.event.issue.labels.*.name, 'short-link')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Build and validate the new links.json
+        id: build
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          if python3 scripts/short_link_request.py links.json > "$RUNNER_TEMP/result.txt"; then
+            cat "$RUNNER_TEMP/result.txt" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "הבקשה לא עברה את הבדיקה:"
+            echo
+            echo '```text'
+            cat "$RUNNER_TEMP/result.txt"
+            echo '```'
+            echo
+            echo "לתיקון: לערוך את הבקשה (Edit) והבדיקה רצה שוב."
+          } > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/comment.md"
+          exit 1
+
+      - name: Push the branch and open the pull request
+        env:
+          SLUG: ${{ steps.build.outputs.slug }}
+        run: |
+          branch="short-link/$SLUG"
+          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            pr_url=$(gh pr list --head "$branch" --state all --json url --jq '.[0].url')
+            gh issue comment "$ISSUE_NUMBER" --body "כבר קיים ענף $branch לקישור הזה. Pull Request: ${pr_url:-none}"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add links.json
+          git commit -m "Add short link /$SLUG" -m "Closes #$ISSUE_NUMBER"
+          git push origin "$branch"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          printf 'Closes #%s\n\nAdds /%s to links.json. The validator passed in %s\n\nPull requests opened by this workflow do not start the Validate check on their own. Close and reopen this PR to run it before merging.\n' \
+            "$ISSUE_NUMBER" "$SLUG" "$run_url" > "$RUNNER_TEMP/pr-body.md"
+          pr_url=$(gh pr create --base main --head "$branch" --title "Add short link /$SLUG" --body-file "$RUNNER_TEMP/pr-body.md")
+          gh issue comment "$ISSUE_NUMBER" --body "נפתח Pull Request: $pr_url - הקישור עולה לאוויר כ-5 דקות אחרי האישור."

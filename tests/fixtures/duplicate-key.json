@@ -1,0 +1,4 @@
+{
+  "reserve-day": {"url": "https://example.com/a", "label": "first", "delayMs": 0},
+  "reserve-day": {"url": "https://example.com/b", "label": "second", "delayMs": 0}
+}
