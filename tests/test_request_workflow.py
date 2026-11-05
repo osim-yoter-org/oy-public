@@ -50,6 +50,8 @@ class RequestWorkflowTests(unittest.TestCase):
             folder.mkdir()
         (bin_dir / "gh").write_text(GH_STUB, encoding="utf-8", newline="\n")
         (bin_dir / "python3").write_text(f'#!/usr/bin/env bash\nexec "{Path(sys.executable).as_posix()}" "$@"\n', encoding="utf-8", newline="\n")
+        for stub in bin_dir.iterdir():
+            stub.chmod(0o755)
         self.env = {
             **os.environ, "PYTHONIOENCODING": "utf-8", "GH_STUB_DIR": str(self.stub), "RUNNER_TEMP": str(self.temp),
             "GITHUB_SERVER_URL": "https://github.com", "GITHUB_REPOSITORY": "osim-yoter-org/oy-public", "GITHUB_RUN_ID": "42",
