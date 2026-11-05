@@ -3,5 +3,10 @@
     "url": "https://osimyoter.co.il/ads",
     "label": "פרסום בקהילה",
     "delayMs": 0
+  },
+  "smoke-pm-1105b": {
+    "url": "https://osimyoter.co.il/pp",
+    "label": "בדיקה שצריכה להיכשל",
+    "delayMs": 0
   }
 }
