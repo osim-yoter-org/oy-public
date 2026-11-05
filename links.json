@@ -3,5 +3,10 @@
     "url": "https://osimyoter.co.il/ads",
     "label": "פרסום בקהילה",
     "delayMs": 0
+  },
+  "idf": {
+    "url": "https://www.miluim.idf.il/",
+    "label": "מעבר לאתר צה''ל",
+    "delayMs": 3000
   }
 }
