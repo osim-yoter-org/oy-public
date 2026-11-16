@@ -41,6 +41,10 @@ class ValidatorTests(unittest.TestCase):
             "bad-json.json": "does not parse",
             "delay-11000.json": "delayMs must be a number from 0 to 10000",
             "label-81.json": "label is 81 characters, max 80",
+            "label-digits.json": "'phone-label': label must not hold 7 or more digits in a row",
+            "label-at.json": "'email-label': label must not hold @",
+            "label-http.json": "'url-label': label must not hold a web address",
+            "label-www.json": "'www-label': label must not hold a web address",
             "top-level-null.json": "top level must be an object",
             "top-level-list.json": "top level must be an object",
         }
@@ -76,6 +80,22 @@ class UrlRuleTests(unittest.TestCase):
         for url in ["https://wa.me/972500000000?text=a b", "https://example.com:8443/x", "https://xn--4dbrk0ce.com/"]:
             with self.subTest(url=url):
                 result = self.check(url)
+                self.assertEqual(result.returncode, 0, result.stdout)
+
+
+class LabelPersonalDataTests(unittest.TestCase):
+    """A label is public and reaches Google Analytics, so it must not look like a phone, ID, email or URL."""
+
+    def check(self, label):
+        with tempfile.TemporaryDirectory() as workdir:
+            links = Path(workdir) / "links.json"
+            links.write_text(json.dumps({"some-link": {"url": "https://example.com/", "label": label}}), encoding="utf-8")
+            return run(VALIDATOR, links)
+
+    def test_when_label_has_short_numbers_and_no_address_exits_0(self):
+        for label in ["יום מילואים 2026", "קו 123456", "050-123-4567 לא רצף", "מעבר לאתר צה''ל"]:
+            with self.subTest(label=label):
+                result = self.check(label)
                 self.assertEqual(result.returncode, 0, result.stdout)
 
 
