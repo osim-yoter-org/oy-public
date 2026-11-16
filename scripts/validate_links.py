@@ -22,7 +22,9 @@ MAX_DELAY_MS = 10000
 MAX_LABEL_LENGTH = 80
 # A label is public and the site sends it to Google Analytics, so it must not carry personal data.
 # Checked after NFKC normalization, so fullwidth digits and the fullwidth at sign count too.
-LABEL_DIGIT_RUN = re.compile(r"\d(?:[ -]?\d){6,}")
+# Phone and ID numbers: 7 digits in a row, or 9 or more split by spaces, dashes, dots, _ or ().
+# Year ranges and dates (2023-2025, 10-12-2026, 01.01.2026) have 8 digits or fewer and pass.
+LABEL_DIGIT_RUN = re.compile(r"\d{7,}|\d(?:[\s()\-–—._]{0,3}\d){8,}")
 LABEL_WEB_ADDRESS = re.compile(
     r"[a-z][a-z0-9+.-]*://|https?:|www\.|(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?![a-z0-9-])",
     re.IGNORECASE,
@@ -113,8 +115,8 @@ def check_links(links, name="links.json"):
                 plain = unicodedata.normalize("NFKC", label)
                 if LABEL_DIGIT_RUN.search(plain):
                     problems.append(
-                        f"{where}: label must not hold 7 or more digits, also with spaces or dashes between them"
-                        " (phone or ID number)"
+                        f"{where}: label must not hold 7 or more digits in a row, or 9 or more split by spaces,"
+                        " dashes or dots (phone or ID number)"
                     )
                 if "@" in plain:
                     problems.append(f"{where}: label must not hold @ (email address)")

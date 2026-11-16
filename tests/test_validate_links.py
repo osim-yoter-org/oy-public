@@ -99,6 +99,7 @@ class LabelPersonalDataTests(unittest.TestCase):
         for label in [
             "יום מילואים 2026", "קו 123456", "05/11/2026", "1.1.2026", "גרסה 1.5", "בלי http בכלל",
             "מעבר לאתר צה''ל", "פרסום בקהילה", "Note: חשוב",
+            "מילואים 2023-2025", "שנת 2025-2026", "סבב 10-12-2026", "01.01.2026", "15.11.2026",
         ]:
             with self.subTest(label=label):
                 result = self.check(label)
@@ -107,6 +108,14 @@ class LabelPersonalDataTests(unittest.TestCase):
     def test_when_label_looks_like_personal_data_or_an_address_exits_1(self):
         cases = {
             "להתקשר 050-123-4567": "7 or more digits",
+            "להתקשר 050 123 4567": "7 or more digits",
+            "להתקשר 03-1234567": "7 or more digits",
+            "ת.ז 123 456 789": "7 or more digits",
+            "(050) 123-4567": "7 or more digits",
+            "050–123–4567": "7 or more digits",
+            "050 - 123 - 4567": "7 or more digits",
+            "050.123.4567": "7 or more digits",
+            "050_123_4567": "7 or more digits",
             "٠٥٠١٢٣٤٥٦٧": "7 or more digits",
             "０５０１２３４５６７": "7 or more digits",
             "dani＠example": "must not hold @",
