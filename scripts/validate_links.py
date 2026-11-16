@@ -11,6 +11,7 @@ import json
 import re
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -19,6 +20,15 @@ NOT_PARSED = object()
 SLUG_PATTERN = re.compile(r"^[a-z0-9-]+$")
 MAX_DELAY_MS = 10000
 MAX_LABEL_LENGTH = 80
+# A label is public and the site sends it to Google Analytics, so it must not carry personal data.
+# Checked after NFKC normalization, so fullwidth digits and the fullwidth at sign count too.
+# Phone and ID numbers: 7 digits in a row, or 9 or more split by spaces, dashes, dots, _ or ().
+# Year ranges and dates (2023-2025, 10-12-2026, 01.01.2026) have 8 digits or fewer and pass.
+LABEL_DIGIT_RUN = re.compile(r"\d{7,}|\d(?:[\s()\-–—._]{0,3}\d){8,}")
+LABEL_WEB_ADDRESS = re.compile(
+    r"[a-z][a-z0-9+.-]*://|https?:|www\.|(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?![a-z0-9-])",
+    re.IGNORECASE,
+)
 
 # Copied from the website repo (osimyoter-website): src/shortLinks/shortLinks.ts RESERVED_SLUGS =
 # APP_PAGE_SLUGS + the slugs of src/forwardRoutes.ts + ARCHIVE_SLUGS + REDIRECT_SLUGS.
@@ -101,6 +111,17 @@ def check_links(links, name="links.json"):
                 problems.append(f"{where}: label must be text")
             elif len(label) > MAX_LABEL_LENGTH:
                 problems.append(f"{where}: label is {len(label)} characters, max {MAX_LABEL_LENGTH}")
+            if isinstance(label, str):
+                plain = unicodedata.normalize("NFKC", label)
+                if LABEL_DIGIT_RUN.search(plain):
+                    problems.append(
+                        f"{where}: label must not hold 7 or more digits in a row, or 9 or more split by spaces,"
+                        " dashes or dots (phone or ID number)"
+                    )
+                if "@" in plain:
+                    problems.append(f"{where}: label must not hold @ (email address)")
+                if LABEL_WEB_ADDRESS.search(plain):
+                    problems.append(f"{where}: label must not hold a web address (a scheme like https:, www. or a domain)")
         if "delayMs" in entry:
             delay = entry["delayMs"]
             if isinstance(delay, bool) or not isinstance(delay, (int, float)) or not 0 <= delay <= MAX_DELAY_MS:

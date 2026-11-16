@@ -19,6 +19,7 @@ Rules:
 - A slug uses lowercase a-z, 0-9 and `-` only.
 - A slug must not be the name of a real site page (for example `u`, `wa`, `ads`, `search`, `pp`). If it is, the site page wins and the link is ignored.
 - `url` must start with `https://`.
+- `label` is public text. It is shown on the redirect screen and in the browser tab, and it is sent to Google Analytics as the page title. Do not put personal data in it: no names of private people, phone numbers, email addresses or ID numbers. Up to 80 characters, no `@`, no web address (no scheme like `https://`, no `www.`, no domain like `example.com`; a name with a dot such as `Next.js` counts as a domain, so write `Next JS`), and no phone or ID number: 7 or more digits in a row, or 9 or more split by spaces, dashes or dots (`050-123-4567` fails; `2023-2025` and `10.12.2026` pass).
 - `delayMs` is optional. 0 forwards at once; 3000 shows the label for 3 seconds first.
 - Remove a line to retire a link. After that, the slug shows the site's 404 page.
 

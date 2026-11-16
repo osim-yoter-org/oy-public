@@ -41,6 +41,13 @@ class ValidatorTests(unittest.TestCase):
             "bad-json.json": "does not parse",
             "delay-11000.json": "delayMs must be a number from 0 to 10000",
             "label-81.json": "label is 81 characters, max 80",
+            "label-digits.json": "'phone-label': label must not hold 7 or more digits",
+            "label-at.json": "'email-label': label must not hold @",
+            "label-http.json": "'url-label': label must not hold a web address",
+            "label-www.json": "'www-label': label must not hold a web address",
+            "label-phone-spaces.json": "'phone-spaces': label must not hold 7 or more digits",
+            "label-id-spaces.json": "'id-spaces': label must not hold 7 or more digits",
+            "label-domain.json": "'domain-label': label must not hold a web address",
             "top-level-null.json": "top level must be an object",
             "top-level-list.json": "top level must be an object",
         }
@@ -79,6 +86,49 @@ class UrlRuleTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout)
 
 
+class LabelPersonalDataTests(unittest.TestCase):
+    """A label is public and reaches Google Analytics, so it must not look like a phone, ID, email or URL."""
+
+    def check(self, label):
+        with tempfile.TemporaryDirectory() as workdir:
+            links = Path(workdir) / "links.json"
+            links.write_text(json.dumps({"some-link": {"url": "https://example.com/", "label": label}}), encoding="utf-8")
+            return run(VALIDATOR, links)
+
+    def test_when_label_has_short_numbers_and_no_address_exits_0(self):
+        for label in [
+            "יום מילואים 2026", "קו 123456", "05/11/2026", "1.1.2026", "גרסה 1.5", "בלי http בכלל",
+            "מעבר לאתר צה''ל", "פרסום בקהילה", "Note: חשוב",
+            "מילואים 2023-2025", "שנת 2025-2026", "סבב 10-12-2026", "01.01.2026", "15.11.2026",
+        ]:
+            with self.subTest(label=label):
+                result = self.check(label)
+                self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_when_label_looks_like_personal_data_or_an_address_exits_1(self):
+        cases = {
+            "להתקשר 050-123-4567": "7 or more digits",
+            "להתקשר 050 123 4567": "7 or more digits",
+            "להתקשר 03-1234567": "7 or more digits",
+            "ת.ז 123 456 789": "7 or more digits",
+            "(050) 123-4567": "7 or more digits",
+            "050–123–4567": "7 or more digits",
+            "050 - 123 - 4567": "7 or more digits",
+            "050.123.4567": "7 or more digits",
+            "050_123_4567": "7 or more digits",
+            "٠٥٠١٢٣٤٥٦٧": "7 or more digits",
+            "０５０１２３４５６７": "7 or more digits",
+            "dani＠example": "must not hold @",
+            "dani gmail.com": "web address",
+            "ftp://files": "web address",
+        }
+        for label, problem in cases.items():
+            with self.subTest(label=label):
+                result = self.check(label)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn(problem, result.stdout)
+
+
 class ShortLinkRequestTests(unittest.TestCase):
     def setUp(self):
         self.workdir = Path(tempfile.mkdtemp())
@@ -100,6 +150,13 @@ class ShortLinkRequestTests(unittest.TestCase):
         self.assertEqual(entry, {"url": "https://example.com/form?a=1&b=2", "label": label, "delayMs": 2500})
         self.assertFalse((self.workdir / "pwned").exists())
         self.assertFalse(Path("pwned").exists())
+
+    def test_when_label_holds_a_phone_number_refuses(self):
+        before = self.links.read_bytes()
+        result = self.request(issue_body("new-link", "https://example.com/", "להתקשר 0501234567"))
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("label must not hold 7 or more digits", result.stdout)
+        self.assertEqual(self.links.read_bytes(), before)
 
     def test_when_delay_is_empty_delay_is_0(self):
         result = self.request(issue_body("new-link", "https://example.com/", "קישור"))
