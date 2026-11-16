@@ -11,6 +11,7 @@ import json
 import re
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -20,8 +21,12 @@ SLUG_PATTERN = re.compile(r"^[a-z0-9-]+$")
 MAX_DELAY_MS = 10000
 MAX_LABEL_LENGTH = 80
 # A label is public and the site sends it to Google Analytics, so it must not carry personal data.
-LABEL_DIGIT_RUN = re.compile(r"[0-9]{7,}")
-LABEL_WEB_ADDRESS = re.compile(r"https?:|www\.", re.IGNORECASE)
+# Checked after NFKC normalization, so fullwidth digits and the fullwidth at sign count too.
+LABEL_DIGIT_RUN = re.compile(r"\d(?:[ -]?\d){6,}")
+LABEL_WEB_ADDRESS = re.compile(
+    r"[a-z][a-z0-9+.-]*://|https?:|www\.|(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?![a-z0-9-])",
+    re.IGNORECASE,
+)
 
 # Copied from the website repo (osimyoter-website): src/shortLinks/shortLinks.ts RESERVED_SLUGS =
 # APP_PAGE_SLUGS + the slugs of src/forwardRoutes.ts + ARCHIVE_SLUGS + REDIRECT_SLUGS.
@@ -105,12 +110,16 @@ def check_links(links, name="links.json"):
             elif len(label) > MAX_LABEL_LENGTH:
                 problems.append(f"{where}: label is {len(label)} characters, max {MAX_LABEL_LENGTH}")
             if isinstance(label, str):
-                if LABEL_DIGIT_RUN.search(label):
-                    problems.append(f"{where}: label must not hold 7 or more digits in a row (phone or ID number)")
-                if "@" in label:
+                plain = unicodedata.normalize("NFKC", label)
+                if LABEL_DIGIT_RUN.search(plain):
+                    problems.append(
+                        f"{where}: label must not hold 7 or more digits, also with spaces or dashes between them"
+                        " (phone or ID number)"
+                    )
+                if "@" in plain:
                     problems.append(f"{where}: label must not hold @ (email address)")
-                if LABEL_WEB_ADDRESS.search(label):
-                    problems.append(f"{where}: label must not hold a web address (http, https or www.)")
+                if LABEL_WEB_ADDRESS.search(plain):
+                    problems.append(f"{where}: label must not hold a web address (a scheme like https:, www. or a domain)")
         if "delayMs" in entry:
             delay = entry["delayMs"]
             if isinstance(delay, bool) or not isinstance(delay, (int, float)) or not 0 <= delay <= MAX_DELAY_MS:

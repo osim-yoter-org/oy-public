@@ -41,10 +41,13 @@ class ValidatorTests(unittest.TestCase):
             "bad-json.json": "does not parse",
             "delay-11000.json": "delayMs must be a number from 0 to 10000",
             "label-81.json": "label is 81 characters, max 80",
-            "label-digits.json": "'phone-label': label must not hold 7 or more digits in a row",
+            "label-digits.json": "'phone-label': label must not hold 7 or more digits",
             "label-at.json": "'email-label': label must not hold @",
             "label-http.json": "'url-label': label must not hold a web address",
             "label-www.json": "'www-label': label must not hold a web address",
+            "label-phone-spaces.json": "'phone-spaces': label must not hold 7 or more digits",
+            "label-id-spaces.json": "'id-spaces': label must not hold 7 or more digits",
+            "label-domain.json": "'domain-label': label must not hold a web address",
             "top-level-null.json": "top level must be an object",
             "top-level-list.json": "top level must be an object",
         }
@@ -93,10 +96,28 @@ class LabelPersonalDataTests(unittest.TestCase):
             return run(VALIDATOR, links)
 
     def test_when_label_has_short_numbers_and_no_address_exits_0(self):
-        for label in ["יום מילואים 2026", "קו 123456", "050-123-4567 לא רצף", "מעבר לאתר צה''ל"]:
+        for label in [
+            "יום מילואים 2026", "קו 123456", "05/11/2026", "1.1.2026", "גרסה 1.5", "בלי http בכלל",
+            "מעבר לאתר צה''ל", "פרסום בקהילה", "Note: חשוב",
+        ]:
             with self.subTest(label=label):
                 result = self.check(label)
                 self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_when_label_looks_like_personal_data_or_an_address_exits_1(self):
+        cases = {
+            "להתקשר 050-123-4567": "7 or more digits",
+            "٠٥٠١٢٣٤٥٦٧": "7 or more digits",
+            "０５０１２３４５６７": "7 or more digits",
+            "dani＠example": "must not hold @",
+            "dani gmail.com": "web address",
+            "ftp://files": "web address",
+        }
+        for label, problem in cases.items():
+            with self.subTest(label=label):
+                result = self.check(label)
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn(problem, result.stdout)
 
 
 class ShortLinkRequestTests(unittest.TestCase):
@@ -120,6 +141,13 @@ class ShortLinkRequestTests(unittest.TestCase):
         self.assertEqual(entry, {"url": "https://example.com/form?a=1&b=2", "label": label, "delayMs": 2500})
         self.assertFalse((self.workdir / "pwned").exists())
         self.assertFalse(Path("pwned").exists())
+
+    def test_when_label_holds_a_phone_number_refuses(self):
+        before = self.links.read_bytes()
+        result = self.request(issue_body("new-link", "https://example.com/", "להתקשר 0501234567"))
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("label must not hold 7 or more digits", result.stdout)
+        self.assertEqual(self.links.read_bytes(), before)
 
     def test_when_delay_is_empty_delay_is_0(self):
         result = self.request(issue_body("new-link", "https://example.com/", "קישור"))
