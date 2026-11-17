@@ -22,9 +22,16 @@ MAX_DELAY_MS = 10000
 MAX_LABEL_LENGTH = 80
 # A label is public and the site sends it to Google Analytics, so it must not carry personal data.
 # Checked after NFKC normalization, so fullwidth digits and the fullwidth at sign count too.
-# Phone and ID numbers: 7 digits in a row, or 9 or more split by spaces, dashes, dots, _ or ().
-# Year ranges and dates (2023-2025, 10-12-2026, 01.01.2026) have 8 digits or fewer and pass.
-LABEL_DIGIT_RUN = re.compile(r"\d{7,}|\d(?:[\s()\-–—._]{0,3}\d){8,}")
+# Phone and ID numbers: 7 digits in a row, or 9 or more split by spaces, dashes, dots, slashes, commas, _ or ().
+# Dates (15.11.2026, 1/1/26), year ranges (2023-2025) and times (10:30) are blanked out first, so a date next to
+# a time or a second number passes. A date glued to more digits by a dash, dot, slash or comma
+# (050-10-12-2026) is not blanked and still counts.
+LABEL_DIGIT_RUN = re.compile(r"\d{7,}|\d(?:[\s()\-‐‒–—._/,]{0,3}\d){8,}")
+LABEL_DATE_OR_TIME = re.compile(
+    r"(?<!\d)(?<!\d[-‐‒–—./_,:])"
+    r"(?:\d{1,2}[./-]\d{1,2}[./-](?:\d{4}|\d{2})|(?:19|20)\d\d\s*[-–]\s*(?:19|20)\d\d|\d{1,2}:\d\d)"
+    r"(?![-‐‒–—./_,:]?\d)"
+)
 LABEL_WEB_ADDRESS = re.compile(
     r"[a-z][a-z0-9+.-]*://|https?:|www\.|(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?![a-z0-9-])",
     re.IGNORECASE,
@@ -113,10 +120,10 @@ def check_links(links, name="links.json"):
                 problems.append(f"{where}: label is {len(label)} characters, max {MAX_LABEL_LENGTH}")
             if isinstance(label, str):
                 plain = unicodedata.normalize("NFKC", label)
-                if LABEL_DIGIT_RUN.search(plain):
+                if LABEL_DIGIT_RUN.search(LABEL_DATE_OR_TIME.sub(" ", plain)):
                     problems.append(
                         f"{where}: label must not hold 7 or more digits in a row, or 9 or more split by spaces,"
-                        " dashes or dots (phone or ID number)"
+                        " dashes, dots, slashes or commas (phone or ID number)"
                     )
                 if "@" in plain:
                     problems.append(f"{where}: label must not hold @ (email address)")
