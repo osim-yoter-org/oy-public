@@ -27,13 +27,18 @@ MAX_LABEL_LENGTH = 80
 # a time or a second number passes. A date glued to more digits by a dash, dot, slash or comma
 # (050-10-12-2026) is not blanked and still counts.
 LABEL_DIGIT_RUN = re.compile(r"\d{7,}|\d(?:[\s()\-‐‒–—._/,]{0,3}\d){8,}")
+# A date with a 2-digit year (03-12-34) is not blanked when more digits follow it, since it may be part of a phone.
 LABEL_DATE_OR_TIME = re.compile(
     r"(?<!\d)(?<!\d[-‐‒–—./_,:])"
-    r"(?:\d{1,2}[./-]\d{1,2}[./-](?:\d{4}|\d{2})|(?:19|20)\d\d\s*[-–]\s*(?:19|20)\d\d|\d{1,2}:\d\d)"
+    r"(?:\d{1,2}[./-]\d{1,2}[./-]\d{4}\s*[-‐‒–—]\s*\d{1,2}[./-]\d{1,2}[./-]\d{4}"
+    r"|\d{1,2}[./-]\d{1,2}[./-](?:\d{4}|\d{2}(?![\s()\-‐‒–—._/,]*\d))"
+    r"|(?:19|20)\d\d\s*[-‐‒–—]\s*(?:19|20)\d\d|\d{1,2}:\d\d)"
     r"(?![-‐‒–—./_,:]?\d)"
 )
+# Linear time, so a long label is checked as fast as a short one. A scheme is a run of letters, digits, + . -
+# with at least one letter, right before ://. A domain is a name part, a dot, then 2 or more letters ending the run.
 LABEL_WEB_ADDRESS = re.compile(
-    r"[a-z][a-z0-9+.-]*://|https?:|www\.|(?<![a-z0-9-])[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?![a-z0-9-])",
+    r"(?<![a-z0-9+.-])[0-9+.-]*[a-z][a-z0-9+.-]*://|https?:|www\.|[a-z0-9-]\.[a-z]{2,}(?![a-z0-9-])",
     re.IGNORECASE,
 )
 

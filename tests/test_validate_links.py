@@ -103,6 +103,8 @@ class LabelPersonalDataTests(unittest.TestCase):
             "15.11.2026 10:30", "הרשמה 01.12.2026 - 15.12.2026", "מילואים 2023-2025 (3 שנים)",
             "2023-2025 2 סבבים", "7.10.2023 - 2025", "15/11/2026 - 20/11/2026", "פגישה 08:00-16:00",
             "גדוד 8104 ו-8200", "גדודים 8104, 8200", "יחידות 8104 8200", "יחידות 8104, 8200 ו-9210",
+            "15.11.2026-17.11.2026", "הרשמה 15.11.2026–17.11.2026 10:00", "2023—2025 (3 שנים)",
+            "2023‐2025 (3 שנים)", "1.1.26 10:30", "סבב 15/11/26 - 20/11/26",
         ]:
             with self.subTest(label=label):
                 result = self.check(label)
@@ -134,6 +136,12 @@ class LabelPersonalDataTests(unittest.TestCase):
             "054.12.12.2034": "7 or more digits",
             "יחידות 8104 8200 9210": "7 or more digits",
             "4580 1234 5678 9012": "7 or more digits",
+            "03-12-34 567": "7 or more digits",
+            "+972 50-12-34 567": "7 or more digits",
+            "1-23-45 6789": "7 or more digits",
+            "05.01.23 4567": "7 or more digits",
+            "15.11.2026-17.11.2026-050": "7 or more digits",
+            "050-15.11.2026-17.11.2026": "7 or more digits",
             "٠٥٠١٢٣٤٥٦٧": "7 or more digits",
             "０５０１２３４５６７": "7 or more digits",
             "dani＠example": "must not hold @",
@@ -145,6 +153,27 @@ class LabelPersonalDataTests(unittest.TestCase):
                 result = self.check(label)
                 self.assertEqual(result.returncode, 1, result.stdout)
                 self.assertIn(problem, result.stdout)
+
+    def test_when_label_is_100k_characters_all_checks_run_within_5_seconds(self):
+        cases = {
+            "1-1-1-1-1-1-1-1x" * 6250: "label is 100000 characters",
+            "a" * 99986 + " ftp://files.x": "web address",
+            "a." * 49995 + " gmail.com": "web address",
+        }
+        for label, problem in cases.items():
+            with self.subTest(label=label[:16]), tempfile.TemporaryDirectory() as workdir:
+                links = Path(workdir) / "links.json"
+                links.write_text(json.dumps({"some-link": {"url": "https://example.com/", "label": label}}), encoding="utf-8")
+                try:
+                    result = subprocess.run(
+                        [sys.executable, str(VALIDATOR), str(links)],
+                        capture_output=True, text=True, encoding="utf-8", env=UTF8_ENV, timeout=5,
+                    )
+                except subprocess.TimeoutExpired:
+                    self.fail("validator took more than 5 s")
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn(problem, result.stdout)
+                self.assertIn("label is 100000 characters", result.stdout)
 
 
 class ShortLinkRequestTests(unittest.TestCase):
