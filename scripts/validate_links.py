@@ -47,7 +47,7 @@ LABEL_WEB_ADDRESS = re.compile(
 # Keep this list in step with those two files whenever a site page or forward route is added.
 APP_PAGE_SLUGS = [
     "michtav-nechitzoot", "michtav_nechitzoot", "privacy-policy", "pp", "accessibility", "u", "wa", "search", "ads",
-    "ykm-tlv", "ads_coupon", "ba-shabak", "tg_ad", "mitgaisim", "milbot-reminder", "r",
+    "ykm-tlv", "ads_coupon", "ba-shabak", "tg_ad", "mitgaisim", "milbot-reminder", "r", "donate",
 ]
 FORWARD_ROUTE_SLUGS = [
     "direct", "close-ad", "tg", "fb", "li", "podcasts", "instagram", "telegram", "jobnikim", "paybox", "sosa", "צמה",
